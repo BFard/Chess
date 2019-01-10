@@ -13,47 +13,120 @@ if ai_module:
 def square_name(row, col):
 	return chr(97 + col) + str(8 - row)
 
+def out_of_bounds(square):
+	row, col = square
+	return row < 0 or row > 7 or col < 0 or col > 7
+
 class Piece():
 	def __init__(self, piece_type, piece_color):
 		self.type = piece_type
 		self.color = piece_color
 
-class Game():
-	def __init__(self):
-		self.board = self.create_board()
-		self.curr_player = 1
-		self.is_over = False
-		self.valid_moves = self.get_valid_moves()
+	def get_attacked_squares(self, board, row, col):
+		attacked_squares = []
 
-	def get_potential_moves(self, board, piece, row, col):
-		potential_moves = []
+		def fan_out(row_dir, col_dir, limit):
+			for i in range(1, limit + 1):
+				new_row, new_col = row + i * row_dir, col + i * col_dir
+				square = (new_row, new_col)
+				if out_of_bounds(square):
+					break
+				piece = board[new_row][new_col]
+				if piece is not None:
+					if piece.color == self.color:
+						break
+					else:
+						attacked_squares.append(square)
+						break
+				else:
+					attacked_squares.append(square)
 
-		if piece.type == "P":
-			direction = -piece.color
-			special_rows = {-1: 1, 1: 6}
+		def fan_diagonal(limit):
+			fan_out(1, 1, limit)
+			fan_out(1, -1, limit)
+			fan_out(-1, 1, limit)
+			fan_out(-1, -1, limit)
+
+		def fan_horizontal(limit):
+			fan_out(1, 0, limit)
+			fan_out(0, 1, limit)
+			fan_out(-1, 0, limit)
+			fan_out(0, -1, limit)
+
+		if self.type == "P":
+			direction = -self.color
+			fan_out(direction, 1, 1)
+			fan_out(direction, -1, 1)
+
+		elif self.type == "B":
+			fan_diagonal(7)
+
+		elif self.type == "R":
+			fan_horizontal(7)
+
+		elif self.type == "Q":
+			fan_diagonal(7)
+			fan_horizontal(7)
+
+		elif self.type == "K":
+			fan_diagonal(1)
+			fan_horizontal(1)
+
+		elif self.type == "N":
+			fan_out(1, 2, 1)
+			fan_out(1, -2, 1)
+			fan_out(-1, 2, 1)
+			fan_out(-1, -2, 1)
+			fan_out(2, 1, 1)
+			fan_out(2, -1, 1)
+			fan_out(-2, 1, 1)
+			fan_out(-2, -1, 1)
+
+		return attacked_squares
+
+	def get_potential_moves(self, board, row, col):
+		potential_moves = self.get_attacked_squares()
+
+		if self.type == "P":
+			direction = -self.color
+			front = (row + direction, col)
 			if board[row + direction][col] is None:
-				potential_moves.append((row + direction, col))
-				if row == special_rows[piece.color] and board[row + 2 * direction][col] is None:
-					potential_moves.append((row - 2, col))
-			left = board[row + direction][col - 1]
-			if left is not None and left.color != piece.color:
-				potential_moves.append((row + direction, col - 1))
-			right = board[row + direction][col + 1]
-			if right is not None and right.color != piece.color:
-				potential_moves.append((row + direction, col + 1))
+				potential_moves.append(front)
+				special_rows = {-1: 1, 1: 6}
+				if row = special_rows[piece.color] and board[row + 2 * direction][col] is None:
+					potential_moves.append((row + 2 * direction, col))
+			left = (row + direction, col - 1)
+			right = (row + direction, col + 1)
+			if not out_of_bounds(left):
+				piece = board[row + direction, col - 1]
+				if piece is None or piece.color == self.color:
+					potential_moves.remove(left)
+			if not out_of_bounds(right):
+				piece = board[row + direction, col + 1]
+				if piece is None or piece.color == self.color:
+					potential_moves.remove(left)
 
 		return potential_moves
 
+class Game():
+	def __init__(self):
+		self.curr_board = self.create_board()
+		self.curr_player = 1
+		self.is_over = False
+		self.king_positions = {1: (7, 4), -1: (0, 4)}
+		self.valid_moves = None #self.get_valid_moves()
+
 	def get_valid_moves(self):
 		valid_moves = {}
+
 		for row in range(8):
 			for col in range(8):
-				piece = self.board[row][col]
+				piece = self.curr_board[row][col]
 				if piece is None or piece.color != self.curr_player:
 					continue
-				for move in self.get_potential_moves(self.board, piece, row, col):
+				for move in self.get_potential_moves(self.curr_board, piece, row, col):
 					new_row, new_col = move
-					board_cpy = copy.deepcopy(self.board)
+					board_cpy = copy.deepcopy(self.curr_board)
 					board_cpy[new_row][new_col] = board_cpy[row][col]
 					board_cpy[row][col] = None
 					if not self.in_check(board_cpy, piece.color):
@@ -63,10 +136,13 @@ class Game():
 
 		return valid_moves
 
+	def transfer(self, start_square, end_square):
+		self.curr_board[end_square[0]][end_square[1]] = self.curr_board[start_square[0]][start_square[1]]
+		self.curr_board[start_square[0]][start_square[1]] = None
+
 	def make_move(self, move):
 		start_square, end_square = self.valid_moves[move]
-		board[end_square[0]][end_square[1]] = board[start_square[0]][start_square[1]]
-		board[start_square[0]][start_square[1]] = None
+		self.transfer(start_square, end_square)
 		self.curr_player *= -1
 		self.is_over = self.get_game_status()
 		self.valid_moves = self.get_valid_moves()
@@ -75,18 +151,10 @@ class Game():
 		for row in range(8):
 			for col in range(8):
 				piece = board[row][col]
-				if piece is None:
-					continue
-				if piece.type == "K" and piece.color == player:
-					king_row, king_col = row, col
-		for row in range(8):
-			for col in range(8):
-				piece = board[row][col]
-				if piece is None:
-					continue
-				potential_moves = self.get_potential_moves(board, piece, row, col)
-				if (king_row, king_col) in potential_moves:
-					return True
+				if piece is not None and piece.color != player:
+					attacked_squares = piece.get_attacked_squares(board, row, col)
+					if self.king_positions[player] in attacked_squares:
+						return True
 		return False
 
 	def create_board(self):
@@ -112,7 +180,7 @@ class Game():
 		for row in range(8)[::perspective]:
 			board_str += line
 			for col in range(8)[::perspective]:
-				piece = self.board[row][col]
+				piece = self.curr_board[row][col]
 				if piece is None:
 					board_str += "|   "
 				elif piece.color == -1:
