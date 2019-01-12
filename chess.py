@@ -84,55 +84,167 @@ class Piece():
 
 		return attacked_squares
 
-	def get_potential_moves(self, board, row, col):
-		potential_moves = self.get_attacked_squares()
+	def get_potential_squares(self, board, row, col, ep_square, castle_privileges):
+		potential_squares = self.get_attacked_squares(board, row, col)
 
 		if self.type == "P":
 			direction = -self.color
 			front = (row + direction, col)
 			if board[row + direction][col] is None:
-				potential_moves.append(front)
+				potential_squares.append(front)
 				special_rows = {-1: 1, 1: 6}
-				if row = special_rows[piece.color] and board[row + 2 * direction][col] is None:
-					potential_moves.append((row + 2 * direction, col))
+				if row == special_rows[self.color] and board[row + 2 * direction][col] is None:
+					potential_squares.append((row + 2 * direction, col))
 			left = (row + direction, col - 1)
 			right = (row + direction, col + 1)
 			if not out_of_bounds(left):
-				piece = board[row + direction, col - 1]
-				if piece is None or piece.color == self.color:
-					potential_moves.remove(left)
+				piece = board[row + direction][col - 1]
+				if piece is None:
+					potential_squares.remove(left)
+				if left == ep_square:
+					potential_squares.append((row + direction, col - 1, "en_passant"))
 			if not out_of_bounds(right):
-				piece = board[row + direction, col + 1]
-				if piece is None or piece.color == self.color:
-					potential_moves.remove(left)
+				piece = board[row + direction][col + 1]
+				if piece is None:
+					potential_squares.remove(right)
+				if right == ep_square:
+					potential_squares.append((row + direction, col + 1, "en_passant"))
 
-		return potential_moves
+		elif self.type == "K":
+			if "long" in castle_privileges[self.color] and \
+			board[row][col - 1] == board[row][col - 2] == board[row][col - 3] is None:
+				potential_squares.append((row, col - 2, "long_castle"))
+			if "short" in castle_privileges[self.color] and \
+			board[row][col + 1] == board[row][col + 2] is None:
+				potential_squares.append((row, col + 2, "short_castle"))
+
+		return potential_squares
 
 class Game():
 	def __init__(self):
 		self.curr_board = self.create_board()
 		self.curr_player = 1
 		self.is_over = False
+		self.ep_square = None
 		self.king_positions = {1: (7, 4), -1: (0, 4)}
-		self.valid_moves = None #self.get_valid_moves()
+		self.castle_privileges = {1: ["long", "short"], -1: ["long", "short"]}
+		self.valid_moves = self.get_valid_moves(self.curr_board, self.curr_player, self.king_positions, self.ep_square, self.castle_privileges)
 
-	def get_valid_moves(self):
+	def get_valid_moves(self, board, player, king_positions, ep_square, castle_privileges, stop_early=False):
 		valid_moves = {}
 
 		for row in range(8):
 			for col in range(8):
-				piece = self.curr_board[row][col]
-				if piece is None or piece.color != self.curr_player:
+				piece = board[row][col]
+				if piece is None or piece.color != player:
 					continue
-				for move in self.get_potential_moves(self.curr_board, piece, row, col):
-					new_row, new_col = move
-					board_cpy = copy.deepcopy(self.curr_board)
-					board_cpy[new_row][new_col] = board_cpy[row][col]
-					board_cpy[row][col] = None
-					if not self.in_check(board_cpy, piece.color):
-						alg_notation = piece.type + square_name(row, col) + square_name(new_row, new_col)
-						valid_moves[alg_notation] = ((row, col), move)
+				for square in piece.get_potential_squares(board, row, col, ep_square, castle_privileges):
+					new_row, new_col = square[0], square[1]
+					board_copy = copy.deepcopy(board)
+					board_copy[row][col] = None
+					new_king_positions = king_positions.copy()
+					if len(square) == 3 and square[2] == "en_passant":
+						board_copy[new_row + piece.color][new_col] = None
+					elif len(square) == 3 and square[2] == "long_castle":
+						board_copy[row][col - 1] = piece
+						new_king_positions[piece.color] = (row, col - 1)
+						if self.in_check(board, piece.color, king_positions) or \
+						self.in_check(board_copy, piece.color, new_king_positions):
+							continue
+						board_copy[row][col - 1] = board_copy[row][0]
+					elif len(square) == 3 and square[2] == "short_castle":
+						board_copy[row][col + 1] == piece
+						new_king_positions[piece.color] = (row, col + 1)
+						if self.in_check(board, piece.color, king_positions) or \
+						self.in_check(board_copy, piece.color, new_king_positions):
+							continue
+						board_copy[row][col + 1] = board_copy[row][7]
+					board_copy[new_row][new_col] = piece
+					if piece.type == "K":
+						new_king_positions[piece.color] = (new_row, new_col)
+					if not self.in_check(board_copy, piece.color, new_king_positions):
+						if stop_early:
+							return "nonempty"
+						move = ((row, col), square)
+						if piece.type == "P":
+							if new_col == col:
+								alg_notation = square_name(new_row, new_col)
+							else:
+								alg_notation = chr(97 + new_col) + "x" + square_name(new_row, new_col)
+							promotion_rows = {1: 0, -1: 7}
+							if new_row == promotion_rows[piece.color]:
+								promotions = [alg_notation + "=N", alg_notation + "=B", alg_notation + "=R", alg_notation + "=Q"]
+								for i in range(4):
+									option = promotions[i]
+									board_copy[new_row][new_col] = Piece(option[-1], piece.color)
+									checks_opp = self.in_check(board_copy, -player, new_king_positions)
+									mates_opp = checks_opp and \
+									len(self.get_valid_moves(board_copy, -player, new_king_positions, None, castle_privileges, True)) == 0 
+									if mates_opp:
+										promotions[i] += "#"
+									elif checks_opp:
+										promotions[i] += "+"
+									valid_moves[promotions[i]] = move
+								continue
+						elif piece.type == "K":
+							if len(square) == 3 and square[2] == "long_castle":
+								alg_notation = "O-O-O"
+							elif len(square) == 3 and square[2] == "short_castle":
+								alg_notation = "O-O"
+							else:
+								alg_notation = piece.type + square_name(new_row, new_col)
+						else:
+							alg_notation = piece.type + square_name(row, col) + square_name(new_row, new_col)
+						if board[new_row][new_col] is not None:
+							alg_notation = alg_notation[:-2] + "x" + alg_notation[-2:]
+						if piece.type == "P" and abs(new_col - col) == 2:
+							new_ep_square = (row, col - piece.color)
+						else:
+							new_ep_square = None
+						checks_opp = self.in_check(board_copy, -player, new_king_positions)
+						mates_opp = checks_opp and \
+						len(self.get_valid_moves(board_copy, -player, new_king_positions, new_ep_square, castle_privileges, True)) == 0
+						if mates_opp:
+							alg_notation += "#"
+						elif checks_opp:
+							alg_notation += "+"
+						valid_moves[alg_notation] = move
 
+		replacements = {}
+		for alg_move in valid_moves.keys():
+			piece_type = alg_move[0]
+			if piece_type not in ["N", "B", "R", "Q"]:
+				continue
+			file = alg_move[1]
+			rank = alg_move[2]
+			def dest(move):
+				if "x" in move:
+					return move[4:6]
+				else:
+					return move[3:5]
+			rank_duplicated = False
+			file_duplicated = False
+			duplicates = [move for move in valid_moves.keys() if move[0] == piece_type and dest(move) == dest(alg_move) and move != alg_move]
+			for other_move in duplicates:
+				if other_move[1] == file:
+					file_duplicated = True
+				if other_move[2] == rank:
+					rank_duplicated == True
+			if rank_duplicated and file_duplicated:
+				continue
+			elif rank_duplicated:
+				new_notation = piece_type + file + alg_move[3:]
+			elif file_duplicated:
+				new_notation = piece_type + alg_move[2:]
+			else:
+				new_notation = piece_type + alg_move[3:]
+			print(alg_move, new_notation, rank_duplicated, file_duplicated)
+			replacements[alg_move] = new_notation
+		
+		for to_replace in replacements:
+			replacement = replacements[to_replace]
+			valid_moves[replacement] = valid_moves[to_replace]
+			valid_moves.pop(to_replace)
 
 		return valid_moves
 
@@ -144,16 +256,16 @@ class Game():
 		start_square, end_square = self.valid_moves[move]
 		self.transfer(start_square, end_square)
 		self.curr_player *= -1
-		self.is_over = self.get_game_status()
-		self.valid_moves = self.get_valid_moves()
+		#self.is_over = self.get_game_status()
+		self.valid_moves = self.get_valid_moves(self.curr_board, self.curr_player, self.king_positions, self.ep_square, self.castle_privileges)
 
-	def in_check(self, board, player):
+	def in_check(self, board, player, king_positions):
 		for row in range(8):
 			for col in range(8):
 				piece = board[row][col]
 				if piece is not None and piece.color != player:
 					attacked_squares = piece.get_attacked_squares(board, row, col)
-					if self.king_positions[player] in attacked_squares:
+					if king_positions[player] in attacked_squares:
 						return True
 		return False
 
@@ -220,7 +332,7 @@ def play(mode, color):
 			message = "Please enter a move for " + player_map[game.curr_player] + ": "
 			move = input(message)
 			while move not in game.valid_moves:
-				print("\nInvalid move entered. Valid moves:", game.valid_moves, "\n")
+				print("\nInvalid move entered. Valid moves: " + str(list(game.valid_moves.keys())).replace("'", "")[1:-1] + "\n")
 				move = input(message)
 		else:
 			print("The computer will make a move for " + player_map[game.curr_player] + ".")
