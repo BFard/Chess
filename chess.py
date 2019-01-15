@@ -124,8 +124,9 @@ class Game():
 	def __init__(self):
 		self.curr_board = self.create_board()
 		self.curr_player = 1
-		self.is_over = False
+		self.result = None
 		self.ep_square = None
+		self.fifty_move_counter = 0
 		self.king_positions = {1: (7, 4), -1: (0, 4)}
 		self.castle_privileges = {1: ["long", "short"], -1: ["long", "short"]}
 		self.valid_moves = self.get_valid_moves(self.curr_board, self.curr_player, self.king_positions, self.ep_square, self.castle_privileges)
@@ -144,7 +145,7 @@ class Game():
 					board_copy[row][col] = None
 					new_king_positions = king_positions.copy()
 					if len(square) == 3 and square[2] == "en_passant":
-						board_copy[new_row + piece.color][new_col] = None
+						board_copy[row][new_col] = None
 					elif len(square) == 3 and square[2] == "long_castle":
 						board_copy[row][col - 1] = piece
 						new_king_positions[piece.color] = (row, col - 1)
@@ -170,7 +171,7 @@ class Game():
 							if new_col == col:
 								alg_notation = square_name(new_row, new_col)
 							else:
-								alg_notation = chr(97 + new_col) + "x" + square_name(new_row, new_col)
+								alg_notation = chr(97 + col) + "x" + square_name(new_row, new_col)
 							promotion_rows = {1: 0, -1: 7}
 							if new_row == promotion_rows[piece.color]:
 								promotions = [alg_notation + "=N", alg_notation + "=B", alg_notation + "=R", alg_notation + "=Q"]
@@ -195,9 +196,9 @@ class Game():
 								alg_notation = piece.type + square_name(new_row, new_col)
 						else:
 							alg_notation = piece.type + square_name(row, col) + square_name(new_row, new_col)
-						if board[new_row][new_col] is not None:
+						if board[new_row][new_col] is not None and piece.type != "P":
 							alg_notation = alg_notation[:-2] + "x" + alg_notation[-2:]
-						if piece.type == "P" and abs(new_col - col) == 2:
+						if piece.type == "P" and abs(new_row - row) == 2:
 							new_ep_square = (row, col - piece.color)
 						else:
 							new_ep_square = None
@@ -229,16 +230,15 @@ class Game():
 				if other_move[1] == file:
 					file_duplicated = True
 				if other_move[2] == rank:
-					rank_duplicated == True
+					rank_duplicated = True
 			if rank_duplicated and file_duplicated:
 				continue
-			elif rank_duplicated:
-				new_notation = piece_type + file + alg_move[3:]
 			elif file_duplicated:
 				new_notation = piece_type + alg_move[2:]
+			elif duplicates:
+				new_notation = piece_type + file + alg_move[3:]
 			else:
 				new_notation = piece_type + alg_move[3:]
-			print(alg_move, new_notation, rank_duplicated, file_duplicated)
 			replacements[alg_move] = new_notation
 		
 		for to_replace in replacements:
@@ -253,11 +253,61 @@ class Game():
 		self.curr_board[start_square[0]][start_square[1]] = None
 
 	def make_move(self, move):
-		start_square, end_square = self.valid_moves[move]
+		move_data = self.valid_moves[move]
+		start_square = move_data[0]
+		end_square = move_data[1]
+		row, col = start_square
+		new_row, new_col = end_square[0], end_square[1]
+		piece = self.curr_board[row][col]
+		if len(end_square) == 3 and end_square[2] == "en_passant":
+			self.curr_board[row][new_col] = None
+		elif len(end_square) == 3 and end_square[2] == "long_castle":
+			self.curr_board[row][col - 1] = self.curr_board[row][0]
+			self.curr_board[row][0] = None
+		elif len(end_square) == 3 and end_square[2] == "short_castle":
+			self.curr_board[row][col + 1] = self.curr_board[row][7]
+			self.curr_board[row][7] = None
 		self.transfer(start_square, end_square)
+		if "=" in move:
+			if move[-1] in ["+", "#"]:
+				new_type = move[-2]
+			else:
+				new_type = move[-1]
+			self.curr_board[new_row][new_col] = Piece(new_type, piece.color)
+		elif piece.type == "P" and abs(new_row - row) == 2:
+			self.ep_square = (row - piece.color, col)
+		elif piece.type == "K":
+			self.king_positions[piece.color] = (new_row, new_col)
+			self.castle_privileges[piece.color] = []
+		elif piece.type == "R":
+			starting_rows = {-1: 0, 1: 7}
+			left_square = (starting_rows[piece.color], 0)
+			right_square = (starting_rows[piece.color], 7)
+			if start_square == left_square and "long_castle" in self.castle_privileges:
+				self.castle_privileges[piece.color].remove("long_castle")
+			elif start_square == right_square and "short_castle" in self.castle_privileges:
+				self.castle_privileges[piece.color].remove("short_castle")
+		if piece.type == "P" or "x" in move:
+			self.fifty_move_counter = 0
+		else:
+			self.fifty_move_counter += 1
 		self.curr_player *= -1
-		#self.is_over = self.get_game_status()
 		self.valid_moves = self.get_valid_moves(self.curr_board, self.curr_player, self.king_positions, self.ep_square, self.castle_privileges)
+		if "#" in move:
+			self.result = piece.color
+		elif not self.valid_moves or self.fifty_move_counter == 100 or self.insufficient_material():
+			self.result = 0
+
+	def insufficient_material(self):
+		num_pieces = 0
+		for row in range(8):
+			for col in range(8):
+				piece = self.curr_board[row][col]
+				if piece is not None and piece.type in ["P", "R", "Q"]:
+					return False
+				elif piece is not None:
+					num_pieces += 1
+		return num_pieces <= 3
 
 	def in_check(self, board, player, king_positions):
 		for row in range(8):
@@ -339,11 +389,20 @@ def play(mode, color):
 			move = ai.get_move(game)
 		return move
 
-	while not game.is_over:
+	while game.result is None:
 		game.print_board(game.curr_player)
 		next_move = get_move()
 		game.make_move(next_move)
 		moves_played += 1
+
+	game.print_board(game.curr_player)
+	if game.result == 0:
+		print("The game is a draw.")
+	else:
+		winner = player_map[game.result]
+		winner = winner[0].upper() + winner[1:]
+		print(winner + " wins.")
+	print("Thanks for playing chess.")
 
 if __name__ == "__main__":
 	if len(sys.argv) == 1:
