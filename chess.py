@@ -274,9 +274,11 @@ class Game():
 			else:
 				new_type = move[-1]
 			self.curr_board[new_row][new_col] = Piece(new_type, piece.color)
-		elif piece.type == "P" and abs(new_row - row) == 2:
+		if piece.type == "P" and abs(new_row - row) == 2:
 			self.ep_square = (row - piece.color, col)
-		elif piece.type == "K":
+		else:
+			self.ep_square = None
+		if piece.type == "K":
 			self.king_positions[piece.color] = (new_row, new_col)
 			self.castle_privileges[piece.color] = []
 		elif piece.type == "R":
