@@ -21,5 +21,5 @@ def get_move(game):
 		start_square = square_name(game.valid_moves[move][0])
 		end_square = square_name(game.valid_moves[move][1])
 		if choice_start == start_square and choice_end == end_square:
-			if promotion not in ["n", "b", "r", "q"] or promotion.upper() == move[-1]:
+			if promotion not in ["n", "b", "r", "q"] or "=" in move and promotion.upper() == move[move.index("=") + 1]:
 				return move

@@ -1,3 +1,4 @@
+import datetime
 import random
 import copy
 import sys
@@ -124,6 +125,7 @@ class Game():
 	def __init__(self):
 		self.curr_board = self.create_board()
 		self.curr_player = 1
+		self.pgn_str = ""
 		self.result = None
 		self.ep_square = None
 		self.full_moves = 1
@@ -296,6 +298,9 @@ class Game():
 			self.fifty_move_counter += 1
 		if self.curr_player == -1:
 			self.full_moves += 1
+			self.pgn_str += move + " "
+		else:
+			self.pgn_str += str(self.full_moves) + ". " + move + " "
 		self.curr_player *= -1
 		self.valid_moves = self.get_valid_moves(self.curr_board, self.curr_player, self.king_positions, self.ep_square, self.castle_privileges)
 		if "#" in move:
@@ -420,6 +425,7 @@ def play(mode, color):
 	game = Game()
 	moves_played = 0
 	player_map = {1: "white", -1: "black"}
+	result_map = {1: "1-0", -1: "0-1", 0: "1/2-1/2"}
 
 	def get_move():
 		if mode == "human" or game.curr_player != computer_player:
@@ -445,7 +451,23 @@ def play(mode, color):
 	else:
 		winner = player_map[game.result]
 		winner = winner[0].upper() + winner[1:]
-		print(winner + " wins.")
+		print(winner + " wins.\n")
+
+	filename = input("If you would like to save this game as a PGN, please enter a filename below.\nOtherwise, press enter: ")
+	if filename:
+		file = open(filename + ".pgn", "w+")
+		white_name = input("Optionally, enter a name for the white player: ")
+		black_name = input("Optionally, enter a name for the black player: ")
+		today = str(datetime.date.today())
+		today = today.replace("-", ".")
+		file.write('[Date "' + today + '"]\n')
+		if white_name:
+			file.write('[White "' + white_name + '"]\n')
+		if black_name:
+			file.write('[Black "' + black_name + '"]\n')
+		file.write('[Result "' + result_map[game.result] + '"]\n\n')
+		file.write(game.pgn_str + result_map[game.result])
+		print("\nGame saved.")
 	print("Thanks for playing chess.")
 
 if __name__ == "__main__":
