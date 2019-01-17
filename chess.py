@@ -2,7 +2,7 @@ import random
 import copy
 import sys
 
-ai_module = "ai"
+ai_module = "sf_wrapper"
 if ai_module:
 	try:
 		exec("import " + ai_module + " as ai")
@@ -126,6 +126,7 @@ class Game():
 		self.curr_player = 1
 		self.result = None
 		self.ep_square = None
+		self.full_moves = 1
 		self.fifty_move_counter = 0
 		self.king_positions = {1: (7, 4), -1: (0, 4)}
 		self.castle_privileges = {1: ["long", "short"], -1: ["long", "short"]}
@@ -293,6 +294,8 @@ class Game():
 			self.fifty_move_counter = 0
 		else:
 			self.fifty_move_counter += 1
+		if self.curr_player == -1:
+			self.full_moves += 1
 		self.curr_player *= -1
 		self.valid_moves = self.get_valid_moves(self.curr_board, self.curr_player, self.king_positions, self.ep_square, self.castle_privileges)
 		if "#" in move:
@@ -321,6 +324,45 @@ class Game():
 						return True
 		return False
 
+	def fen(self):
+		player_map = {1: "w", -1: "b"}
+		fen_str = ""
+		for row in range(8):
+			spaces = 0
+			for col in range(8):
+				piece = self.curr_board[row][col]
+				if piece is None:
+					spaces += 1
+				else:
+					if spaces:
+						fen_str += str(spaces)
+						spaces = 0
+					if piece.color == -1:
+						fen_str += piece.type.lower()
+					else:
+						fen_str += piece.type
+			if spaces:
+				fen_str += str(spaces)
+			if row < 7:
+				fen_str += "/"
+		fen_str += " " + player_map[self.curr_player] + " "
+		if "short" in self.castle_privileges[1]:
+			fen_str += "K"
+		if "long" in self.castle_privileges[1]:
+			fen_str += "Q"
+		if "short" in self.castle_privileges[-1]:
+			fen_str += "k"
+		if "long" in self.castle_privileges[-1]:
+			fen_str += "q"
+		if self.castle_privileges[1] == self.castle_privileges[-1] == []:
+			fen_str += "-"
+		if self.ep_square is not None:
+			fen_str += " " + square_name(self.ep_square[0], self.ep_square[1]) + " "
+		else:
+			fen_str += " - "
+		fen_str += str(self.fifty_move_counter) + " " + str(self.full_moves)
+		return fen_str
+
 	def create_board(self):
 		board = [[None for _ in range(8)] for _ in range(8)]
 		colors = {0: -1, 1: -1, 6: 1, 7: 1}
@@ -340,7 +382,7 @@ class Game():
 
 	def print_board(self, perspective):
 		board_str = "\n"
-		line = "---------------------------------\n"
+		line = "+---+---+---+---+---+---+---+---+\n"
 		for row in range(8)[::perspective]:
 			board_str += line
 			for col in range(8)[::perspective]:
