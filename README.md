@@ -11,7 +11,7 @@ game ends, it can be saved in [PGN](https://en.wikipedia.org/wiki/Portable_Game_
 The AI used by the `computer` mode can be changed by modifying the `ai_module` variable at the beginning of `chess.py`. This variable 
 should be set to the name of a Python file (without the ".py") that implements the `get_move(game)` function, which should take in the 
 current `Game` object and return a string representing a move in algebraic notation. For examples, see `minimax_ai.py`, a simple AI that 
-uses depth-limited minimax with alpha-beta pruning, and `sf-wrapper.py`, a wrapper for the popular chess engine [Stockfish](https://stockfishchess.org/).
+uses depth-limited minimax with alpha-beta pruning, and `sf_wrapper.py`, a wrapper for the popular chess engine [Stockfish](https://stockfishchess.org/).
 Note that to use the latter, you will need to download Stockfish and place `stockfish_10_x32` in the same directory as `sf_wrapper.py`.
 
 # Screenshots
